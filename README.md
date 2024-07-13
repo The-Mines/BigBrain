@@ -1,4 +1,5 @@
 # BigBrain (BB) - File Path Processor
+![bb](img/BB-01.png)
 
 BigBrain (BB) is a Go-based command-line tool designed to process and manage file paths in your projects. It's particularly useful for preparing project files for AI RAG (Retrieval-Augmented Generation) systems by adding file path comments to the beginning of each file.
 
