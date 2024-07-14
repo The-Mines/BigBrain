@@ -233,7 +233,16 @@ func processFileRun(path string) error {
 	if len(match) > 1 {
 		// Extract the file path from the comment
 		commentPath := strings.TrimSpace(match[1])
-		newFileName := strings.ReplaceAll(commentPath, "/", "-") + filepath.Ext(path)
+		
+		// Remove the extension from the commentPath if it exists
+		commentPathWithoutExt := strings.TrimSuffix(commentPath, filepath.Ext(commentPath))
+		
+		// Create the new file name by replacing slashes with hyphens
+		newFileName := strings.ReplaceAll(commentPathWithoutExt, "/", "-")
+		
+		// Add the original file extension
+		newFileName += filepath.Ext(path)
+		
 		newFilePath := filepath.Join(rootPath, ".bb", newFileName)
 
 		// Copy the file to the new location
