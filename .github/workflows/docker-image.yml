@@ -25,11 +25,6 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Install semver
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y semver
-
     - name: Get latest version
       id: get_version
       run: |
@@ -37,7 +32,12 @@ jobs:
         if [[ $GITHUB_REF == refs/tags/* ]]; then
           version=${GITHUB_REF#refs/tags/}
         else
-          version=$(semver -i patch $latest_tag)
+          # Parse the latest tag and increment the patch version
+          major=$(echo $latest_tag | cut -d. -f1 | sed 's/v//')
+          minor=$(echo $latest_tag | cut -d. -f2)
+          patch=$(echo $latest_tag | cut -d. -f3)
+          new_patch=$((patch + 1))
+          version="v$major.$minor.$new_patch"
         fi
         echo "VERSION=$version" >> $GITHUB_OUTPUT
 
