@@ -16,7 +16,8 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
+      pull-requests: write
       packages: write
 
     steps:
@@ -67,10 +68,16 @@ jobs:
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
 
-    - name: Create Git tag
+    - name: Create Pull Request for version bump
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      run: |
-        git config user.name github-actions
-        git config user.email github-actions@github.com
-        git tag ${{ steps.get_version.outputs.VERSION }}
-        git push origin ${{ steps.get_version.outputs.VERSION }}
+      uses: peter-evans/create-pull-request@v5
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: Bump version to ${{ steps.get_version.outputs.VERSION }}
+        title: Bump version to ${{ steps.get_version.outputs.VERSION }}
+        body: |
+          This PR bumps the version to ${{ steps.get_version.outputs.VERSION }}.
+          
+          This is an automated PR created by the CI workflow.
+        branch: version-bump-${{ steps.get_version.outputs.VERSION }}
+        base: main
