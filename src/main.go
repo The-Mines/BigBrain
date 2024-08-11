@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
 	"github.com/spf13/cobra"
 	"github.com/The-Mines/BigBrain/pkg/file_processor"
 	"github.com/The-Mines/BigBrain/pkg/node_module"
