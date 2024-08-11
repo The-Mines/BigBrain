@@ -1,3 +1,4 @@
+// pkg/file_processor/file_processor.go
 package fileprocessor
 
 import (
