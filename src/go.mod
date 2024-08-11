@@ -1,4 +1,3 @@
-// go.mod
 module github.com/The-Mines/BigBrain
 
 go 1.22.3

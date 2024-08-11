@@ -1,3 +1,4 @@
+// main.go
 package main
 
 import (
@@ -11,15 +12,20 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/The-Mines/BigBrain/pkg/node_module"
+	"github.com/The-Mines/BigBrain/pkg/go_module"
 )
 
 var (
 	rootPath    string
-	nodeFiles   bool
 	dryRun      bool
 	verbose     bool
 	runMode     bool
 	ignoreRules []string
+	nodeModule  node_module.NodeModule
+	goModule    go_module.GoModule
+	nodeOnly    bool
+	goOnly      bool
 )
 
 func loadGitignore(path string) error {
@@ -55,9 +61,8 @@ func shouldIgnore(path string) bool {
 		return false
 	}
 
-	// Ignore 'public' and '.next' folders for Node.js projects
-	if nodeFiles && (relPath == "public" || strings.HasPrefix(relPath, "public/") ||
-		relPath == ".next" || strings.HasPrefix(relPath, ".next/")) {
+	// Use the Node module to check for Node.js specific paths
+	if nodeModule != nil && nodeModule.ShouldIgnoreNodePath(relPath) {
 		if verbose {
 			log.Printf("Ignoring Node.js specific directory: %s\n", relPath)
 		}
@@ -95,10 +100,13 @@ func shouldIgnore(path string) bool {
 	return false
 }
 
+
 var rootCmd = &cobra.Command{
-	Use:   "bigbrain [path]",
+	Use:   "BigBrain [path]",
 	Short: "Recursively search for and update file paths",
-	Args:  cobra.MaximumNArgs(1),
+	Long: `BigBrain is a CLI tool that recursively searches for files and updates their paths.
+It can be configured to work specifically with Node.js or Go files.`,
+	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) > 0 {
 			rootPath = args[0]
@@ -139,10 +147,16 @@ var rootCmd = &cobra.Command{
 				return nil
 			}
 
-			ext := filepath.Ext(path)
-			if nodeFiles && (ext != ".ts" && ext != ".js" && ext != ".jsx" && ext != ".mjs" && ext != ".cjs") {
+			if nodeOnly && !nodeModule.IsNodeFile(path) {
 				if verbose {
-					log.Printf("Skipping %s (not a Node.js file)\n", path)
+					log.Printf("Skipping non-Node.js file: %s\n", path)
+				}
+				return nil
+			}
+
+			if goOnly && !goModule.IsGoFile(path) {
+				if verbose {
+					log.Printf("Skipping non-Go file: %s\n", path)
 				}
 				return nil
 			}
@@ -158,6 +172,7 @@ var rootCmd = &cobra.Command{
 		}
 	},
 }
+
 
 func processFile(path string, dryRun bool) error {
 	file, err := os.Open(path)
@@ -188,6 +203,12 @@ func processFile(path string, dryRun bool) error {
 		if dryRun {
 			fmt.Printf("Would insert path: %s\n", relativePath)
 		} else {
+			if goOnly && !goModule.CanAddComment(path) {
+				if verbose {
+					log.Printf("Skipping comment insertion for Go file: %s\n", path)
+				}
+				return nil
+			}
 			// Insert the path at the beginning of the file
 			content, err := os.ReadFile(path)
 			if err != nil {
@@ -206,6 +227,7 @@ func processFile(path string, dryRun bool) error {
 
 	return nil
 }
+
 func processFileRun(path string) error {
 	file, err := os.Open(path)
 	if err != nil {
@@ -243,13 +265,17 @@ func processFileRun(path string) error {
 		// Add the original file extension
 		newFileName += filepath.Ext(path)
 		
-		newFilePath := filepath.Join(rootPath, ".bb", newFileName)
+		// Create the .bb directory if it doesn't exist
+		bbDir := filepath.Join(rootPath, ".bb")
+		if err := os.MkdirAll(bbDir, os.ModePerm); err != nil {
+			return fmt.Errorf("error creating .bb directory: %v", err)
+		}
+
+		newFilePath := filepath.Join(bbDir, newFileName)
 
 		// Copy the file to the new location
-		err = copyFile(path, newFilePath)
-		if err != nil {
-			log.Printf("Error copying file %s to %s: %v\n", path, newFilePath, err)
-			return err
+		if err := copyFile(path, newFilePath); err != nil {
+			return fmt.Errorf("error copying file %s to %s: %v", path, newFilePath, err)
 		}
 
 		fmt.Printf("Copied %s to %s\n", path, newFilePath)
@@ -274,21 +300,22 @@ func copyFile(src, dst string) error {
 	defer destFile.Close()
 
 	_, err = io.Copy(destFile, sourceFile)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }
-
 func init() {
-	rootCmd.Flags().BoolVarP(&nodeFiles, "node", "n", false, "Search for Node.js related files (ts, js, jsx, mjs, cjs)")
 	rootCmd.Flags().BoolVarP(&dryRun, "dry-run", "d", false, "Show which files would be modified without actually changing them")
 	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose logging")
 	rootCmd.Flags().BoolVarP(&runMode, "run", "r", false, "Copy files with path comments to .bb folder")
+	rootCmd.Flags().BoolVarP(&nodeOnly, "node", "n", false, "Process only Node.js files (.js, .ts, .jsx, .mjs, .cjs)")
+	rootCmd.Flags().BoolVarP(&goOnly, "go", "g", false, "Process only Go files (.go, go.mod, go.sum)")
 }
 
 func main() {
+	// Initialize the Node module
+	nodeModule = node_module.New()
+	// Initialize the Go module
+	goModule = go_module.New()
+
 	if err := rootCmd.Execute(); err != nil {
 		log.Fatalf("Error executing command: %v\n", err)
 	}
