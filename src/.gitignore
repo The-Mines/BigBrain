@@ -1,0 +1,56 @@
+# If you prefer the allow list template instead of the deny list, see community template:
+# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
+#
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+.bb
+*venv*
+
+err = filepath.Walk(rootPath, func(path string, info os.FileInfo, err error) error {
+        if err != nil {
+                    return err
+                        }
+
+                            // Skip .git directory
+                                if info.IsDir() && info.Name() == ".git" {
+                                            return filepath.SkipDir
+                                                }
+
+                                                    // Handle potential panics during gitignore matching
+                                                        defer func() {
+                                                                    if r := recover(); r != nil {
+                                                                                    fmt.Fprintf(os.Stderr, "Error matching .gitignore for %s: %v\n", path, r)
+                                                                                            }
+                                                                                                }()
+
+                                                                                                    // Check if file is matched by .gitignore
+                                                                                                        if gitignore.Match(path) != nil {
+                                                                                                                    return nil // Skip files matched by .gitignore
+                                                                                                                        }
+
+                                                                                                                            ext := filepath.Ext(path)
+                                                                                                                                if nodeFiles && (ext != ".ts" && ext != ".js" && ext != ".jsx" && ext != ".mjs" && ext != ".cjs") {
+                                                                                                                                            return nil
+                                                                                                                                                }
+
+                                                                                                                                                    return processFile(path, &gitignore, dryRun)
+})
+
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Dependency directories (remove the comment below to include it)
+# vendor/
+
+# Go workspace file
+go.work
+go.work.sum
+BigBrain
