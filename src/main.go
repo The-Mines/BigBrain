@@ -7,12 +7,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
 	"github.com/spf13/cobra"
 	"github.com/The-Mines/BigBrain/pkg/file_processor"
 	"github.com/The-Mines/BigBrain/pkg/node_module"
 	"github.com/The-Mines/BigBrain/pkg/go_module"
+	"github.com/The-Mines/BigBrain/pkg/python_module"
 )
-
 
 var (
 	rootPath    string
@@ -22,8 +23,10 @@ var (
 	ignoreRules []string
 	nodeModule  node_module.NodeModule
 	goModule    go_module.GoModule
+	pythonModule python_module.PythonModule
 	nodeOnly    bool
 	goOnly      bool
+	pythonOnly  bool
 )
 
 func loadGitignore(path string) error {
@@ -67,6 +70,14 @@ func shouldIgnore(path string) bool {
 		return true
 	}
 
+	// Use the Python module to check for Python specific paths
+	if pythonModule != nil && pythonModule.ShouldIgnorePythonPath(relPath) {
+		if verbose {
+			log.Printf("Ignoring Python specific directory: %s\n", relPath)
+		}
+		return true
+	}
+
 	// Ignore hidden files and directories (starting with a dot), except the root
 	if strings.HasPrefix(filepath.Base(relPath), ".") && relPath != "." {
 		if verbose {
@@ -98,13 +109,11 @@ func shouldIgnore(path string) bool {
 	return false
 }
 
-
-
 var rootCmd = &cobra.Command{
 	Use:   "BigBrain [path]",
 	Short: "Recursively search for and update file paths",
 	Long: `BigBrain is a CLI tool that recursively searches for files and updates their paths.
-It can be configured to work specifically with Node.js or Go files.`,
+It can be configured to work specifically with Node.js, Go, or Python files.`,
 	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) > 0 {
@@ -118,7 +127,7 @@ It can be configured to work specifically with Node.js or Go files.`,
 			log.Printf("Warning: Could not load .gitignore: %v\n", err)
 		}
 
-		processor := fileprocessor.New(rootPath, verbose, nodeModule, goModule, nodeOnly, goOnly)
+		processor := fileprocessor.New(rootPath, verbose, nodeModule, goModule, pythonModule, nodeOnly, goOnly, pythonOnly)
 
 		err := filepath.Walk(rootPath, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
@@ -153,6 +162,13 @@ It can be configured to work specifically with Node.js or Go files.`,
 				return nil
 			}
 
+			if pythonOnly && !pythonModule.IsPythonFile(path) {
+				if verbose {
+					log.Printf("Skipping non-Python file: %s\n", path)
+				}
+				return nil
+			}
+
 			if runMode {
 				return processor.ProcessFileRun(path)
 			}
@@ -165,13 +181,13 @@ It can be configured to work specifically with Node.js or Go files.`,
 	},
 }
 
-
 func init() {
 	rootCmd.Flags().BoolVarP(&dryRun, "dry-run", "d", false, "Show which files would be modified without actually changing them")
 	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose logging")
 	rootCmd.Flags().BoolVarP(&runMode, "run", "r", false, "Copy files with path comments to .bb folder")
 	rootCmd.Flags().BoolVarP(&nodeOnly, "node", "n", false, "Process only Node.js files (.js, .ts, .jsx, .mjs, .cjs)")
 	rootCmd.Flags().BoolVarP(&goOnly, "go", "g", false, "Process only Go files (.go, go.mod, go.sum)")
+	rootCmd.Flags().BoolVarP(&pythonOnly, "python", "p", false, "Process only Python files (.py)")
 }
 
 func main() {
@@ -179,6 +195,8 @@ func main() {
 	nodeModule = node_module.New()
 	// Initialize the Go module
 	goModule = go_module.New()
+	// Initialize the Python module
+	pythonModule = python_module.New()
 
 	if err := rootCmd.Execute(); err != nil {
 		log.Fatalf("Error executing command: %v\n", err)

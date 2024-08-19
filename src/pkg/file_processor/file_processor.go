@@ -13,6 +13,7 @@ import (
 
 	"github.com/The-Mines/BigBrain/pkg/go_module"
 	"github.com/The-Mines/BigBrain/pkg/node_module"
+	"github.com/The-Mines/BigBrain/pkg/python_module"
 )
 
 type FileProcessor interface {
@@ -21,22 +22,26 @@ type FileProcessor interface {
 }
 
 type fileProcessor struct {
-	rootPath    string
-	verbose     bool
-	nodeModule  node_module.NodeModule
-	goModule    go_module.GoModule
-	nodeOnly    bool
-	goOnly      bool
+	rootPath     string
+	verbose      bool
+	nodeModule   node_module.NodeModule
+	goModule     go_module.GoModule
+	pythonModule python_module.PythonModule
+	nodeOnly     bool
+	goOnly       bool
+	pythonOnly   bool
 }
 
-func New(rootPath string, verbose bool, nodeModule node_module.NodeModule, goModule go_module.GoModule, nodeOnly, goOnly bool) FileProcessor {
+func New(rootPath string, verbose bool, nodeModule node_module.NodeModule, goModule go_module.GoModule, pythonModule python_module.PythonModule, nodeOnly, goOnly, pythonOnly bool) FileProcessor {
 	return &fileProcessor{
-		rootPath:   rootPath,
-		verbose:    verbose,
-		nodeModule: nodeModule,
-		goModule:   goModule,
-		nodeOnly:   nodeOnly,
-		goOnly:     goOnly,
+		rootPath:     rootPath,
+		verbose:      verbose,
+		nodeModule:   nodeModule,
+		goModule:     goModule,
+		pythonModule: pythonModule,
+		nodeOnly:     nodeOnly,
+		goOnly:       goOnly,
+		pythonOnly:   pythonOnly,
 	}
 }
 
@@ -55,8 +60,8 @@ func (fp *fileProcessor) ProcessFile(path string, dryRun bool) error {
 		firstLine = scanner.Text()
 	}
 
-	// Check if the first line matches the expected pattern (e.g., "// app/projects/page.tsx")
-	matched, err := regexp.MatchString(`^\/\/\s*\S+`, firstLine)
+	// Check if the first line matches the expected pattern (e.g., "// app/projects/page.tsx" or "# app/projects/page.py")
+	matched, err := regexp.MatchString(`^(//|#)\s*\S+`, firstLine)
 	if err != nil {
 		return err
 	}
@@ -75,12 +80,24 @@ func (fp *fileProcessor) ProcessFile(path string, dryRun bool) error {
 				}
 				return nil
 			}
+			if fp.pythonOnly && !fp.pythonModule.CanAddComment(path) {
+				if fp.verbose {
+					log.Printf("Skipping comment insertion for non-Python file: %s\n", path)
+				}
+				return nil
+			}
 			// Insert the path at the beginning of the file
 			content, err := os.ReadFile(path)
 			if err != nil {
 				return err
 			}
-			newContent := append([]byte("// "+strings.TrimPrefix(relativePath, "/")+"\n"), content...)
+			var commentPrefix string
+			if fp.pythonModule.IsPythonFile(path) {
+				commentPrefix = fp.pythonModule.GetCommentPrefix()
+			} else {
+				commentPrefix = "//"
+			}
+			newContent := append([]byte(commentPrefix+" "+strings.TrimPrefix(relativePath, "/")+"\n"), content...)
 			err = os.WriteFile(path, newContent, 0644)
 			if err != nil {
 				return err
