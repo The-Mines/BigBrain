@@ -14,11 +14,13 @@ import (
 	"github.com/The-Mines/BigBrain/pkg/go_module"
 	"github.com/The-Mines/BigBrain/pkg/node_module"
 	"github.com/The-Mines/BigBrain/pkg/python_module"
+	"github.com/The-Mines/BigBrain/pkg/ast_analyzer"
 )
 
 type FileProcessor interface {
-	ProcessFile(path string, dryRun bool) error
-	ProcessFileRun(path string) error
+    ProcessFile(path string, dryRun bool) error
+    ProcessFileRun(path string) error
+    PerformASTAnalysis(path string) error
 }
 
 type fileProcessor struct {
@@ -30,19 +32,21 @@ type fileProcessor struct {
 	nodeOnly     bool
 	goOnly       bool
 	pythonOnly   bool
+	astAnalyzer ast_analyzer.ASTAnalyzer
 }
 
-func New(rootPath string, verbose bool, nodeModule node_module.NodeModule, goModule go_module.GoModule, pythonModule python_module.PythonModule, nodeOnly, goOnly, pythonOnly bool) FileProcessor {
-	return &fileProcessor{
-		rootPath:     rootPath,
-		verbose:      verbose,
-		nodeModule:   nodeModule,
-		goModule:     goModule,
-		pythonModule: pythonModule,
-		nodeOnly:     nodeOnly,
-		goOnly:       goOnly,
-		pythonOnly:   pythonOnly,
-	}
+func New(rootPath string, verbose bool, nodeModule node_module.NodeModule, goModule go_module.GoModule, pythonModule python_module.PythonModule, nodeOnly, goOnly, pythonOnly bool, astAnalyzer ast_analyzer.ASTAnalyzer) FileProcessor {
+    return &fileProcessor{
+        rootPath:     rootPath,
+        verbose:      verbose,
+        nodeModule:   nodeModule,
+        goModule:     goModule,
+        pythonModule: pythonModule,
+        nodeOnly:     nodeOnly,
+        goOnly:       goOnly,
+        pythonOnly:   pythonOnly,
+        astAnalyzer:  astAnalyzer,
+    }
 }
 
 func (fp *fileProcessor) ProcessFile(path string, dryRun bool) error {
@@ -184,4 +188,28 @@ func copyFile(src, dst string) error {
 
 	_, err = io.Copy(destFile, sourceFile)
 	return err
+}
+
+func (fp *fileProcessor) PerformASTAnalysis(path string) error {
+    if fp.astAnalyzer == nil {
+        return nil // Skip if AST analyzer is not initialized
+    }
+
+    node, err := fp.astAnalyzer.ParseFile(path)
+    if err != nil {
+        return fmt.Errorf("failed to parse file: %v", err)
+    }
+
+    functions := fp.astAnalyzer.GetFunctions(node)
+    classes := fp.astAnalyzer.GetClasses(node)
+    variables := fp.astAnalyzer.GetVariables(node)
+
+    if fp.verbose {
+        fmt.Printf("AST Analysis for %s:\n", path)
+        fmt.Printf("  Functions: %d\n", len(functions))
+        fmt.Printf("  Classes: %d\n", len(classes))
+        fmt.Printf("  Variables: %d\n", len(variables))
+    }
+
+    return nil
 }
