@@ -7,12 +7,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
+    "fmt"
 	"github.com/spf13/cobra"
 	"github.com/The-Mines/BigBrain/pkg/file_processor"
 	"github.com/The-Mines/BigBrain/pkg/node_module"
 	"github.com/The-Mines/BigBrain/pkg/go_module"
 	"github.com/The-Mines/BigBrain/pkg/python_module"
+	"github.com/The-Mines/BigBrain/pkg/ast_analyzer"
 )
 
 var (
@@ -27,6 +28,8 @@ var (
 	nodeOnly    bool
 	goOnly      bool
 	pythonOnly  bool
+	astAnalysis bool
+	astAnalyzer ast_analyzer.ASTAnalyzer
 )
 
 func loadGitignore(path string) error {
@@ -109,77 +112,114 @@ func shouldIgnore(path string) bool {
 	return false
 }
 
+
 var rootCmd = &cobra.Command{
-	Use:   "BigBrain [path]",
-	Short: "Recursively search for and update file paths",
-	Long: `BigBrain is a CLI tool that recursively searches for files and updates their paths.
+    Use:   "BigBrain [path]",
+    Short: "Recursively search for and update file paths",
+    Long: `BigBrain is a CLI tool that recursively searches for files and updates their paths.
 It can be configured to work specifically with Node.js, Go, or Python files.`,
-	Args: cobra.MaximumNArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		if len(args) > 0 {
-			rootPath = args[0]
-		} else {
-			rootPath, _ = os.Getwd()
-		}
+    Args: cobra.MaximumNArgs(1),
+    Run: func(cmd *cobra.Command, args []string) {
+        if len(args) > 0 {
+            rootPath = args[0]
+        } else {
+            rootPath, _ = os.Getwd()
+        }
 
-		gitignorePath := filepath.Join(rootPath, ".gitignore")
-		if err := loadGitignore(gitignorePath); err != nil {
-			log.Printf("Warning: Could not load .gitignore: %v\n", err)
-		}
+        gitignorePath := filepath.Join(rootPath, ".gitignore")
+        if err := loadGitignore(gitignorePath); err != nil {
+            log.Printf("Warning: Could not load .gitignore: %v\n", err)
+        }
 
-		processor := fileprocessor.New(rootPath, verbose, nodeModule, goModule, pythonModule, nodeOnly, goOnly, pythonOnly)
+        var astAnalyzer ast_analyzer.ASTAnalyzer
+        if astAnalysis {
+            astAnalyzer = ast_analyzer.New()
+        }
 
-		err := filepath.Walk(rootPath, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
+        processor := fileprocessor.New(rootPath, verbose, nodeModule, goModule, pythonModule, nodeOnly, goOnly, pythonOnly, astAnalyzer)
 
-			if shouldIgnore(path) {
-				if verbose {
-					log.Printf("Ignoring: %s\n", path)
-				}
-				if info.IsDir() {
-					return filepath.SkipDir
-				}
-				return nil
-			}
+        err := filepath.Walk(rootPath, func(path string, info os.FileInfo, err error) error {
+            if err != nil {
+                return err
+            }
 
-			if info.IsDir() {
-				return nil
-			}
+            if shouldIgnore(path) {
+                if verbose {
+                    log.Printf("Ignoring: %s\n", path)
+                }
+                if info.IsDir() {
+                    return filepath.SkipDir
+                }
+                return nil
+            }
 
-			if nodeOnly && !nodeModule.IsNodeFile(path) {
-				if verbose {
-					log.Printf("Skipping non-Node.js file: %s\n", path)
-				}
-				return nil
-			}
+            if info.IsDir() {
+                return nil
+            }
 
-			if goOnly && !goModule.IsGoFile(path) {
-				if verbose {
-					log.Printf("Skipping non-Go file: %s\n", path)
-				}
-				return nil
-			}
+            if nodeOnly && !nodeModule.IsNodeFile(path) {
+                if verbose {
+                    log.Printf("Skipping non-Node.js file: %s\n", path)
+                }
+                return nil
+            }
 
-			if pythonOnly && !pythonModule.IsPythonFile(path) {
-				if verbose {
-					log.Printf("Skipping non-Python file: %s\n", path)
-				}
-				return nil
-			}
+            if goOnly && !goModule.IsGoFile(path) {
+                if verbose {
+                    log.Printf("Skipping non-Go file: %s\n", path)
+                }
+                return nil
+            }
 
-			if runMode {
-				return processor.ProcessFileRun(path)
-			}
-			return processor.ProcessFile(path, dryRun)
-		})
+            if pythonOnly && !pythonModule.IsPythonFile(path) {
+                if verbose {
+                    log.Printf("Skipping non-Python file: %s\n", path)
+                }
+                return nil
+            }
 
-		if err != nil {
-			log.Fatalf("Error during processing: %v\n", err)
-		}
-	},
+            if astAnalysis {
+                if err := processor.PerformASTAnalysis(path); err != nil {
+                    log.Printf("Error performing AST analysis on %s: %v\n", path, err)
+                }
+            }
+
+            if runMode {
+                return processor.ProcessFileRun(path)
+            }
+            return processor.ProcessFile(path, dryRun)
+        })
+
+        if err != nil {
+            log.Fatalf("Error during processing: %v\n", err)
+        }
+    },
 }
+
+func performASTAnalysis(path string) error {
+    if astAnalyzer == nil {
+        return fmt.Errorf("AST analyzer not initialized")
+    }
+
+    node, err := astAnalyzer.ParseFile(path)
+    if err != nil {
+        return fmt.Errorf("failed to parse file: %v", err)
+    }
+
+    functions := astAnalyzer.GetFunctions(node)
+    classes := astAnalyzer.GetClasses(node)
+    variables := astAnalyzer.GetVariables(node)
+
+    fmt.Printf("AST Analysis for %s:\n", path)
+    fmt.Printf("  Functions: %d\n", len(functions))
+    fmt.Printf("  Classes: %d\n", len(classes))
+    fmt.Printf("  Variables: %d\n", len(variables))
+
+    // You can add more detailed analysis here if needed
+
+    return nil
+}
+
 
 func init() {
 	rootCmd.Flags().BoolVarP(&dryRun, "dry-run", "d", false, "Show which files would be modified without actually changing them")
@@ -188,17 +228,18 @@ func init() {
 	rootCmd.Flags().BoolVarP(&nodeOnly, "node", "n", false, "Process only Node.js files (.js, .ts, .jsx, .mjs, .cjs)")
 	rootCmd.Flags().BoolVarP(&goOnly, "go", "g", false, "Process only Go files (.go, go.mod, go.sum)")
 	rootCmd.Flags().BoolVarP(&pythonOnly, "python", "p", false, "Process only Python files (.py)")
+	rootCmd.Flags().BoolVar(&astAnalysis, "ast", false, "Perform AST analysis on the files")
 }
 
 func main() {
-	// Initialize the Node module
-	nodeModule = node_module.New()
-	// Initialize the Go module
-	goModule = go_module.New()
-	// Initialize the Python module
-	pythonModule = python_module.New()
+    // Initialize the Node module
+    nodeModule = node_module.New()
+    // Initialize the Go module
+    goModule = go_module.New()
+    // Initialize the Python module
+    pythonModule = python_module.New()
 
-	if err := rootCmd.Execute(); err != nil {
-		log.Fatalf("Error executing command: %v\n", err)
-	}
+    if err := rootCmd.Execute(); err != nil {
+        log.Fatalf("Error executing command: %v\n", err)
+    }
 }
